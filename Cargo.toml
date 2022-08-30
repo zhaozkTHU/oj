@@ -9,6 +9,7 @@ edition = "2021"
 actix-web = "4.1.0"
 env_logger = "0.9.0"
 log = "0.4.17"
+serde = { version = "1.0.144", features = ["derive"] }
 
 [dev-dependencies]
 assert-json-diff = "2.0.2"

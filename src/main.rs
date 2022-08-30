@@ -1,3 +1,6 @@
+mod jobs;
+mod json_struct;
+
 use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
 use env_logger;
 use log;
