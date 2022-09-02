@@ -18,22 +18,14 @@ pub fn judger(
 ) -> (Vec<Case>, f32) {
     // Create temporart direction
     fs::create_dir("./TMPDIR").unwrap();
-    let mut main_rs = fs::File::create("./TMPDIR/main.rs").unwrap();
-    main_rs.write_all(source_code.as_bytes()).unwrap();
-
-    // Add arguments
-    let mut args: Vec<String> = Vec::new();
-    for i in config.languages[0].command.iter().skip(1) {
-        if i == "%OUTPUT%" {
-            args.push("./TMPDIR/main".to_string());
-            continue;
-        }
-        if i == "%INPUT%" {
-            args.push("./TMPDIR/main.rs".to_string());
-            continue;
-        }
-        args.push(i.clone());
-    }
+    let mut main_file: fs::File;
+    match language.as_str() {
+        "Rust" => main_file = fs::File::create("./TMPDIR/main.rs").unwrap(),
+        "C" => main_file = fs::File::create("./TMPDIR/main.c").unwrap(),
+        "C++" => main_file = fs::File::create("./TMPDIR/main.cpp").unwrap(),
+        _ => unreachable!(),
+    };
+    main_file.write_all(source_code.as_bytes()).unwrap();
 
     // Compile
     let (compile_success, compile_time) = compile(config, language);
@@ -69,17 +61,27 @@ pub fn judger(
 /// Compile according to language
 /// return whether success and compile time
 fn compile(config: &web::Data<Config>, language: &String) -> (bool, u128) {
+    // Add arguments
     let mut args: Vec<String> = Vec::new();
-    for i in config.languages[0].command.iter().skip(1) {
-        if i == "%OUTPUT%" {
-            args.push("./TMPDIR/main".to_string());
-            continue;
+    for j in config.languages.iter().enumerate() {
+        if j.1.name == *language {
+            for i in config.languages[j.0].command.iter().skip(1) {
+                if i == "%OUTPUT%" {
+                    args.push("./TMPDIR/main".to_string());
+                    continue;
+                }
+                if i == "%INPUT%" {
+                    match language.as_str() {
+                        "Rust" => args.push("./TMPDIR/main.rs".to_string()),
+                        "C" => args.push("./TMPDIR/main.c".to_string()),
+                        "C++" => args.push("./TMPDIR/main.cpp".to_string()),
+                        _ => unreachable!(),
+                    };
+                    continue;
+                }
+                args.push(i.clone());
+            }
         }
-        if i == "%INPUT%" {
-            args.push("./TMPDIR/main.rs".to_string());
-            continue;
-        }
-        args.push(i.clone());
     }
 
     // Compile
@@ -88,6 +90,12 @@ fn compile(config: &web::Data<Config>, language: &String) -> (bool, u128) {
     match language.as_str() {
         "Rust" => {
             compile_status = Command::new("rustc").args(args).status().unwrap();
+        }
+        "C" => {
+            compile_status = Command::new("gcc").args(args).status().unwrap();
+        }
+        "C++" => {
+            compile_status = Command::new("g++").args(args).status().unwrap();
         }
         _ => unreachable!(),
     }
