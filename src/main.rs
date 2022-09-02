@@ -1,6 +1,7 @@
 mod config;
 mod jobs;
 mod judger;
+mod users;
 
 use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
 use env_logger;
@@ -10,6 +11,7 @@ use lazy_static::lazy_static;
 use log;
 use std::sync::{Arc, Mutex};
 use structopt::StructOpt;
+use users::{get_user, post_user};
 
 lazy_static! {
     static ref PROBLEM_LIST: Arc<Mutex<Vec<crate::config::Problem>>> =
@@ -57,6 +59,8 @@ async fn main() -> std::io::Result<()> {
             .service(get_jobs)
             .service(get_jobid)
             .service(put_jobid)
+            .service(post_user)
+            .service(get_user)
             // DO NOT REMOVE: used in automatic testing
             .service(exit)
     })

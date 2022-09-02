@@ -105,6 +105,20 @@ async fn post_jobs(body: web::Json<PostJob>, config: web::Data<Config>) -> impl 
             message: "".to_string(),
         });
     }
+    let lock = crate::users::USER_LIST.lock().unwrap();
+    if lock
+        .iter()
+        .find(|x| x.id.unwrap() == body.user_id)
+        .is_none()
+    {
+        drop(lock);
+        return HttpResponse::NotFound().json(Error {
+            reason: "ERR_NOT_FOUND".to_string(),
+            code: 3,
+            message: "".to_string(),
+        });
+    }
+    drop(lock);
     let mut index: usize = 0;
     for i in config.problems.iter().enumerate() {
         if i.1.id == body.problem_id {
