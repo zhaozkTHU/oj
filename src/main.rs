@@ -2,9 +2,10 @@ mod config;
 mod jobs;
 mod judger;
 
-use crate::jobs::post_jobs;
 use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
 use env_logger;
+use jobs::{get_jobid, get_jobs};
+use jobs::{post_jobs, put_jobid};
 use lazy_static::lazy_static;
 use log;
 use std::sync::{Arc, Mutex};
@@ -53,6 +54,9 @@ async fn main() -> std::io::Result<()> {
             .route("/hello", web::get().to(|| async { "Hello World!" }))
             .service(greet)
             .service(post_jobs)
+            .service(get_jobs)
+            .service(get_jobid)
+            .service(put_jobid)
             // DO NOT REMOVE: used in automatic testing
             .service(exit)
     })
