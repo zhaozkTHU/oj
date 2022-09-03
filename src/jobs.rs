@@ -76,6 +76,8 @@ pub enum Result {
     TimeLimitExceeded,
 
     Waiting,
+
+    Skipped,
 }
 
 #[derive(Deserialize)]

@@ -104,11 +104,60 @@ fn compile(config: &web::Data<Config>, language: &String) -> (bool, u128) {
     (compile_status.success(), compile_time)
 }
 
-fn get_scores(config: &web::Data<Config>, cases: &mut Vec<Case>, index: usize) -> f32 {
+fn get_scores(config: &web::Data<Config>, cases: &mut Vec<Case>, problem_id: usize) -> f32 {
     let mut scores = 0.0;
-    let mut id = 0;
-    for i in config.problems[index].cases.iter() {
+    let mut id: u32 = 0;
+
+    let mut packing: Vec<Vec<bool>> = Vec::new();
+    if config.problems[problem_id].misc.packing.is_some() {
+        for i in config.problems[problem_id]
+            .misc
+            .packing
+            .clone()
+            .unwrap()
+            .iter()
+        {
+            packing.push(vec![false; i.len()]);
+        }
+    }
+    let mut pack_score = vec![0 as f32; packing.len()];
+
+    for i in config.problems[problem_id].cases.iter() {
         id += 1;
+
+        // The case in which pack
+        let mut packing_id = 0;
+        // The case index in this pack
+        let mut packing_index = 0;
+        if !packing.is_empty() {
+            let mut tmp = 0;
+            for (res, v) in packing.iter().enumerate() {
+                if id > tmp && id <= tmp + v.len() as u32 {
+                    packing_id = res;
+                    packing_index = id - tmp - 1;
+                    break;
+                } else {
+                    tmp += v.len() as u32;
+                }
+            }
+        }
+        let mut skipped = false;
+        for i in packing[packing_id].iter().take(packing_index as usize) {
+            if !i {
+                cases.push(Case {
+                    id,
+                    result: Result::Skipped,
+                    time: 0,
+                    memory: 0,
+                    info: "".to_string(),
+                });
+                skipped = true;
+                break;
+            }
+        }
+        if skipped {
+            continue;
+        }
 
         // Compile error
         if fs::File::open("./TMPDIR/main").is_err() {
@@ -160,7 +209,7 @@ fn get_scores(config: &web::Data<Config>, cases: &mut Vec<Case>, index: usize) -
             continue;
         }
 
-        if match config.problems[index].r#type.as_str() {
+        if match config.problems[problem_id].r#type.as_str() {
             "standard" => standart_compare(&i.answer_file, &"./TMPDIR/out".to_string()),
             "strict" => strict_compare(&i.answer_file, &"./TMPDIR/out".to_string()),
             _ => unreachable!(),
@@ -172,7 +221,14 @@ fn get_scores(config: &web::Data<Config>, cases: &mut Vec<Case>, index: usize) -
                 memory: 0,
                 info: "".to_string(),
             });
-            scores += i.score;
+            if packing.is_empty() {
+                scores += i.score;
+            } else {
+                pack_score[packing_id] += i.score;
+                if packing_index == packing[packing_id].len() as u32 - 1 {
+                    scores += pack_score[packing_id];
+                }
+            }
         } else {
             cases.push(Case {
                 id,

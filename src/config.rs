@@ -31,6 +31,7 @@ pub struct Problem {
     pub id: u32,
     name: String,
     pub r#type: String,
+    pub misc: Misc,
     pub cases: Vec<Case>,
 }
 
@@ -48,4 +49,10 @@ pub struct Language {
     pub name: String,
     file_name: String,
     pub command: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Misc {
+    pub packing: Option<Vec<Vec<u32>>>,
+    pub special_judge: Option<Vec<String>>,
 }
