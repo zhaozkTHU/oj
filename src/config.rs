@@ -55,4 +55,5 @@ pub struct Language {
 pub struct Misc {
     pub packing: Option<Vec<Vec<u32>>>,
     pub special_judge: Option<Vec<String>>,
+    pub dynamic_ranking_ratio: Option<f32>,
 }

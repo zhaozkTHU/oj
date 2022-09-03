@@ -2,6 +2,7 @@ use actix_web::{get, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, vec};
 
+use crate::jobs::{Result, RESPONSE_LIST};
 use crate::{config::Config, users::User};
 
 #[derive(Deserialize)]
@@ -34,7 +35,44 @@ async fn get_contests_ranklist(
     let mut latest_time = vec![String::new(); users.len()];
 
     let lock = crate::jobs::RESPONSE_LIST.lock().unwrap();
-    for i in lock.iter() {
+    let mut response_list = lock.clone();
+    drop(lock);
+
+    for i in response_list.iter_mut() {
+        if config.problems[i.submission.problem_id as usize].r#type == "dynamic_ranking" {
+            if let Some(ratio) = config.problems[i.submission.problem_id as usize]
+                .misc
+                .dynamic_ranking_ratio
+                .as_ref()
+            {
+                let mut new_score: f32 = 0.0;
+                if i.result == Result::Accepted {
+                    let mut shortest = vec![0 as u128; i.score_vec.len()];
+                    let lock = RESPONSE_LIST.lock().unwrap();
+                    for i in lock.iter() {
+                        if i.submission.problem_id == i.submission.problem_id as u32 {
+                            for j in i.cases.iter().enumerate().skip(1) {
+                                if shortest[j.0 - 1] == 0 || j.1.time < shortest[j.0 - 1] {
+                                    shortest[j.0 - 1] = j.1.time;
+                                }
+                            }
+                        }
+                    }
+                    for (u, s) in i.score_vec.iter().enumerate() {
+                        new_score += *s
+                            * (1 as f32 - *ratio
+                                + *ratio * (shortest[u] as f32) / (i.cases[u + 1].time as f32));
+                    }
+                    drop(lock);
+                } else {
+                    new_score = i.score * ratio;
+                }
+                i.score = new_score;
+            }
+        }
+    }
+
+    for i in response_list.iter() {
         if contest_id.clone() != 0 {
             if i.submission.contest_id != contest_id.clone() {
                 continue;

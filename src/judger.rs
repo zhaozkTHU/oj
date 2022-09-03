@@ -12,10 +12,10 @@ use crate::jobs::{Case, Result};
 
 pub fn judger(
     source_code: &String,
-    index: usize,
+    problem_id: usize,
     language: &String,
     config: &web::Data<Config>,
-) -> (Vec<Case>, f32) {
+) -> (Vec<Case>, (f32, Vec<f32>)) {
     // Create temporart direction
     fs::create_dir("./TMPDIR").unwrap();
     let mut main_file: fs::File;
@@ -41,7 +41,7 @@ pub fn judger(
         });
     } else {
         // Compilation Error
-        for _ in config.problems[index].cases.iter() {
+        for _ in config.problems[problem_id].cases.iter() {
             cases.push(Case {
                 id: 0,
                 result: Result::CompilationError,
@@ -52,10 +52,10 @@ pub fn judger(
         }
     }
 
-    let scores: f32 = get_scores(config, &mut cases, index);
+    let score = get_scores(config, &mut cases, problem_id);
 
     fs::remove_dir_all("./TMPDIR").unwrap();
-    return (cases, scores);
+    return (cases, score);
 }
 
 /// Compile according to language
@@ -104,8 +104,13 @@ fn compile(config: &web::Data<Config>, language: &String) -> (bool, u128) {
     (compile_status.success(), compile_time)
 }
 
-fn get_scores(config: &web::Data<Config>, cases: &mut Vec<Case>, problem_id: usize) -> f32 {
-    let mut scores = 0.0;
+fn get_scores(
+    config: &web::Data<Config>,
+    cases: &mut Vec<Case>,
+    problem_id: usize,
+) -> (f32, Vec<f32>) {
+    let mut total_score = 0.0;
+    let mut score_vec: Vec<f32> = Vec::new();
     let mut id: u32 = 0;
 
     let mut packing: Vec<Vec<bool>> = Vec::new();
@@ -141,22 +146,25 @@ fn get_scores(config: &web::Data<Config>, cases: &mut Vec<Case>, problem_id: usi
                 }
             }
         }
-        let mut skipped = false;
-        for i in packing[packing_id].iter().take(packing_index as usize) {
-            if !i {
-                cases.push(Case {
-                    id,
-                    result: Result::Skipped,
-                    time: 0,
-                    memory: 0,
-                    info: "".to_string(),
-                });
-                skipped = true;
-                break;
+
+        if !packing.is_empty() {
+            let mut skipped = false;
+            for i in packing[packing_id].iter().take(packing_index as usize) {
+                if !i {
+                    cases.push(Case {
+                        id,
+                        result: Result::Skipped,
+                        time: 0,
+                        memory: 0,
+                        info: "".to_string(),
+                    });
+                    skipped = true;
+                    break;
+                }
             }
-        }
-        if skipped {
-            continue;
+            if skipped {
+                continue;
+            }
         }
 
         // Compile error
@@ -209,9 +217,22 @@ fn get_scores(config: &web::Data<Config>, cases: &mut Vec<Case>, problem_id: usi
             continue;
         }
 
+        let mut info = String::new();
         if match config.problems[problem_id].r#type.as_str() {
-            "standard" => standart_compare(&i.answer_file, &"./TMPDIR/out".to_string()),
+            "standard" | "dynamic_ranking" => {
+                standart_compare(&i.answer_file, &"./TMPDIR/out".to_string())
+            }
             "strict" => strict_compare(&i.answer_file, &"./TMPDIR/out".to_string()),
+            "spj" => special_compare(
+                &mut info,
+                config.problems[problem_id]
+                    .misc
+                    .special_judge
+                    .clone()
+                    .unwrap(),
+                &i.answer_file,
+                &"./TMPDIR/out".to_string(),
+            ),
             _ => unreachable!(),
         } {
             cases.push(Case {
@@ -219,14 +240,16 @@ fn get_scores(config: &web::Data<Config>, cases: &mut Vec<Case>, problem_id: usi
                 result: Result::Accepted,
                 time: run_time,
                 memory: 0,
-                info: "".to_string(),
+                info,
             });
+            score_vec.push(i.score);
             if packing.is_empty() {
-                scores += i.score;
+                total_score += i.score;
             } else {
+                packing[packing_id][packing_index as usize] = true;
                 pack_score[packing_id] += i.score;
                 if packing_index == packing[packing_id].len() as u32 - 1 {
-                    scores += pack_score[packing_id];
+                    total_score += pack_score[packing_id];
                 }
             }
         } else {
@@ -235,12 +258,12 @@ fn get_scores(config: &web::Data<Config>, cases: &mut Vec<Case>, problem_id: usi
                 result: Result::WrongAnswer,
                 time: run_time,
                 memory: 0,
-                info: "".to_string(),
+                info,
             })
         }
         fs::remove_file("./TMPDIR/out").unwrap();
     }
-    return scores;
+    return (total_score, score_vec);
 }
 
 fn standart_compare(answer_path: &String, out_path: &String) -> bool {
@@ -267,4 +290,48 @@ fn strict_compare(answer_path: &String, out_path: &String) -> bool {
     let answer: String = fs::read_to_string(answer_path).unwrap();
     let res: String = fs::read_to_string(out_path).unwrap();
     res == answer
+}
+
+fn special_compare(
+    info: &mut String,
+    special_judge: Vec<String>,
+    answer_path: &String,
+    out_path: &String,
+) -> bool {
+    let args: Vec<String> = special_judge
+        .iter()
+        .skip(1)
+        .map(|x| {
+            if x == "%OUTPUT%" {
+                out_path.to_string()
+            } else if x == "%ANSWER%" {
+                answer_path.clone()
+            } else {
+                x.clone()
+            }
+        })
+        .collect();
+    let special_file = fs::File::create("./TMPDIR/special").unwrap();
+    Command::new(special_judge[0].clone())
+        .args(args)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .stdout(special_file)
+        .status()
+        .unwrap();
+    let tmp: Vec<String> = BufReader::new(fs::File::open("./TMPDIR/special").unwrap())
+        .lines()
+        .map(|x| x.unwrap().trim().to_string())
+        .collect();
+    *info = tmp[1].clone();
+    fs::remove_file("./TMPDIR/special").unwrap();
+    match tmp[0].as_str() {
+        "Accepted" => {
+            return true;
+        }
+        "Wrong Answer" => {
+            return false;
+        }
+        _ => unreachable!(),
+    }
 }

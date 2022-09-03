@@ -2,7 +2,10 @@ use actix_web::{get, post, put, web, HttpResponse, Responder};
 use chrono::prelude::*;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use std::{
+    fs,
+    sync::{Arc, Mutex},
+};
 
 use crate::{config::Config, users::USER_LIST};
 
@@ -22,9 +25,10 @@ pub struct Response {
     updated_time: String,
     pub submission: Submission,
     state: String,
-    result: Result,
+    pub result: Result,
     pub score: f32,
-    cases: Vec<Case>,
+    pub score_vec: Vec<f32>,
+    pub cases: Vec<Case>,
 }
 
 lazy_static! {
@@ -99,6 +103,8 @@ lazy_static! {
 
 #[post("/jobs")]
 async fn post_jobs(body: web::Json<PostJob>, config: web::Data<Config>) -> impl Responder {
+    fs::remove_dir_all("./TMPDIR").err();
+
     let created_time: String = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     if !config.languages.iter().any(|x| x.name == body.language) {
         return HttpResponse::NotFound().json(Error {
@@ -121,10 +127,10 @@ async fn post_jobs(body: web::Json<PostJob>, config: web::Data<Config>) -> impl 
         });
     }
     drop(lock);
-    let mut index: usize = 0;
+    let mut problem_id: usize = 0;
     for i in config.problems.iter().enumerate() {
         if i.1.id == body.problem_id {
-            index = i.0;
+            problem_id = i.0;
         }
     }
     if !config.problems.iter().any(|x| x.id == body.problem_id) {
@@ -135,7 +141,7 @@ async fn post_jobs(body: web::Json<PostJob>, config: web::Data<Config>) -> impl 
         });
     }
 
-    let res = crate::judger::judger(&body.source_code, index, &body.language, &config);
+    let res = crate::judger::judger(&body.source_code, problem_id, &body.language, &config);
     let updated_time: String = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
 
     let mut result: Result;
@@ -150,6 +156,8 @@ async fn post_jobs(body: web::Json<PostJob>, config: web::Data<Config>) -> impl 
             }
         }
     }
+
+    let score: f32 = res.1 .0;
 
     let mut lock = JOB_ID.lock().unwrap();
     let id = lock.clone();
@@ -170,7 +178,8 @@ async fn post_jobs(body: web::Json<PostJob>, config: web::Data<Config>) -> impl 
         },
         state: "Finished".to_string(),
         result,
-        score: res.1,
+        score,
+        score_vec: res.1 .1.clone(),
         cases: res.0.clone(),
     });
     drop(lock);
@@ -188,8 +197,9 @@ async fn post_jobs(body: web::Json<PostJob>, config: web::Data<Config>) -> impl 
         },
         state: "Finished".to_string(),
         result,
-        score: res.1,
+        score,
         cases: res.0,
+        score_vec: res.1 .1.clone(),
     })
     // TODO: User management
     // TODO: Competition function
@@ -295,8 +305,9 @@ async fn put_jobid(jobid: web::Path<u32>, config: web::Data<Config>) -> impl Res
         submission: response.submission.clone(),
         state: "Finished".to_string(),
         result,
-        score: res.1,
+        score: res.1 .0,
         cases: res.0.clone(),
+        score_vec: res.1 .1.clone(),
     };
     drop(lock);
     HttpResponse::Ok().json(Response {
@@ -306,8 +317,9 @@ async fn put_jobid(jobid: web::Path<u32>, config: web::Data<Config>) -> impl Res
         submission: response.submission,
         state: "Finished".to_string(),
         result,
-        score: res.1,
+        score: res.1 .0,
         cases: res.0,
+        score_vec: res.1 .1.clone(),
     })
 }
 
