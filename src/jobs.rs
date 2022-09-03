@@ -4,7 +4,7 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
-use crate::config::Config;
+use crate::{config::Config, users::USER_LIST};
 
 #[derive(Deserialize, Serialize)]
 struct PostJob {
@@ -16,28 +16,28 @@ struct PostJob {
 }
 
 #[derive(Deserialize, Serialize, Clone)]
-struct Response {
+pub struct Response {
     id: u32,
-    created_time: String,
+    pub created_time: String,
     updated_time: String,
-    submission: Submission,
+    pub submission: Submission,
     state: String,
     result: Result,
-    score: f32,
+    pub score: f32,
     cases: Vec<Case>,
 }
 
 lazy_static! {
-    static ref RESPONSE_LIST: Arc<Mutex<Vec<Response>>> = Arc::new(Mutex::new(Vec::new()));
+    pub static ref RESPONSE_LIST: Arc<Mutex<Vec<Response>>> = Arc::new(Mutex::new(Vec::new()));
 }
 
 #[derive(Deserialize, Serialize, Clone)]
-struct Submission {
+pub struct Submission {
     source_code: String,
     language: String,
-    user_id: u32,
-    contest_id: u32,
-    problem_id: u32,
+    pub user_id: u32,
+    pub contest_id: u32,
+    pub problem_id: u32,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -311,6 +311,29 @@ async fn put_jobid(jobid: web::Path<u32>, config: web::Data<Config>) -> impl Res
 
 fn filter(info: &web::Query<Info>, response_list: &Vec<Response>, filtered: &mut Vec<bool>) {
     // TODO
+    if let Some(user_id) = info.user_id.as_ref() {
+        for (i, j) in response_list.iter().enumerate() {
+            if j.submission.user_id != *user_id {
+                filtered[i] = false;
+            }
+        }
+    }
+    if let Some(user_name) = info.user_name.as_ref() {
+        for (i, j) in response_list.iter().enumerate() {
+            let lock = USER_LIST.lock().unwrap();
+            if lock[j.submission.user_id as usize].name != *user_name {
+                filtered[i] = false;
+            }
+            drop(lock);
+        }
+    }
+    if let Some(contest_id) = info.contest_id.as_ref() {
+        for (i, j) in response_list.iter().enumerate() {
+            if j.submission.contest_id != *contest_id {
+                filtered[i] = false;
+            }
+        }
+    }
     if let Some(problem_id) = info.problem_id.as_ref() {
         for (i, j) in response_list.iter().enumerate() {
             if j.submission.problem_id != *problem_id {

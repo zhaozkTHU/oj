@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Deserialize, Serialize, Clone)]
 pub struct User {
     pub id: Option<u32>,
-    name: String,
+    pub name: String,
 }
 
 #[derive(Deserialize, Serialize)]

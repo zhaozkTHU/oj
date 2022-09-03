@@ -1,9 +1,11 @@
 mod config;
+mod contests;
 mod jobs;
 mod judger;
 mod users;
 
 use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
+use contests::get_contests_ranklist;
 use env_logger;
 use jobs::{get_jobid, get_jobs};
 use jobs::{post_jobs, put_jobid};
@@ -61,6 +63,7 @@ async fn main() -> std::io::Result<()> {
             .service(put_jobid)
             .service(post_user)
             .service(get_user)
+            .service(get_contests_ranklist)
             // DO NOT REMOVE: used in automatic testing
             .service(exit)
     })
