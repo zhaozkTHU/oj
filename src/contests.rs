@@ -147,7 +147,13 @@ async fn post_contest(body: web::Json<PostContest>, config: web::Data<Config>) -
 #[get("/contests")]
 async fn get_contests() -> impl Responder {
     let contest_list = CONTEST_LIST.lock().unwrap();
-    let res = HttpResponse::Ok().json(contest_list.clone());
+    let res = HttpResponse::Ok().json(
+        contest_list
+            .clone()
+            .into_iter()
+            .skip(1)
+            .collect::<Vec<Contest>>(),
+    );
     drop(contest_list);
     res
 }
@@ -188,6 +194,13 @@ async fn get_contests_ranklist(
     let lock = crate::jobs::RESPONSE_LIST.lock().unwrap();
     let mut response_list = lock.clone();
     drop(lock);
+
+    if contest_id.clone() != 0 {
+        response_list = response_list
+            .into_iter()
+            .filter(|x| x.submission.contest_id == contest_id.clone())
+            .collect();
+    }
 
     for i in response_list.iter_mut() {
         if config.problems[i.submission.problem_id as usize].r#type == "dynamic_ranking" {
@@ -349,6 +362,26 @@ async fn get_contests_ranklist(
             submission_count: submission_count[j.1],
         });
         totals += 1;
+    }
+
+    if contest_id.clone() != 0 {
+        let contest_list = CONTEST_LIST.lock().unwrap();
+        // score of user who is not in the contest must be 0, so remove these users will not change the rank
+        res = res
+            .into_iter()
+            .filter(|x| {
+                contest_list[contest_id.clone() as usize]
+                    .user_ids
+                    .contains(&(x.user.id.unwrap() as usize))
+            })
+            .collect();
+        for i in res.iter_mut() {
+            let mut tmp: Vec<f32> = Vec::new();
+            for j in contest_list[contest_id.clone() as usize].problem_ids.iter() {
+                tmp.push(i.scores[*j]);
+            }
+            i.scores = tmp;
+        }
     }
 
     HttpResponse::Ok().json(res)

@@ -162,7 +162,7 @@ async fn post_jobs(body: web::Json<PostJob>, config: web::Data<Config>) -> impl 
                 message: "Problem doesn't exist in this contest.".to_string(),
             });
         }
-        if !contest_list[body.contest_id as usize - 1]
+        if !contest_list[body.contest_id as usize]
             .user_ids
             .contains(&(body.user_id as usize))
         {
@@ -189,7 +189,7 @@ async fn post_jobs(body: web::Json<PostJob>, config: web::Data<Config>) -> impl 
             drop(contest_list);
             return HttpResponse::BadRequest().json(Error {
                 reason: "ERR_RATE_LIMIT".to_string(),
-                code: 1,
+                code: 4,
                 message: "Over submission limit.".to_string(),
             });
         }
@@ -199,7 +199,7 @@ async fn post_jobs(body: web::Json<PostJob>, config: web::Data<Config>) -> impl 
             drop(contest_list);
             return HttpResponse::BadRequest().json(Error {
                 reason: "ERR_RATE_LIMIT".to_string(),
-                code: 1,
+                code: 4,
                 message: "Time limit.".to_string(),
             });
         }
