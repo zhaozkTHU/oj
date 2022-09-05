@@ -1,8 +1,11 @@
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{get, post, web, HttpResponse, Responder};
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
 use std::{cmp::Ordering, vec};
 
 use crate::jobs::{Result, RESPONSE_LIST};
+use crate::users::USER_LIST;
 use crate::{config::Config, users::User};
 
 #[derive(Deserialize)]
@@ -16,6 +19,154 @@ struct Error {
     reason: String,
     code: u8,
     message: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Contest {
+    pub id: usize,
+    pub name: String,
+    pub from: String,
+    pub to: String,
+    pub problem_ids: Vec<usize>,
+    pub user_ids: Vec<usize>,
+    pub submission_limit: u32,
+}
+
+#[derive(Deserialize, Clone)]
+struct PostContest {
+    id: Option<usize>,
+    name: String,
+    from: String,
+    to: String,
+    problem_ids: Vec<usize>,
+    user_ids: Vec<usize>,
+    submission_limit: u32,
+}
+
+lazy_static! {
+    pub static ref CONTEST_LIST: Arc<Mutex<Vec<Contest>>> = Arc::new(Mutex::new(vec![Contest {
+        id: 0,
+        name: String::new(),
+        from: String::new(),
+        to: String::new(),
+        problem_ids: Vec::new(),
+        user_ids: Vec::new(),
+        submission_limit: 0,
+    }]));
+}
+
+#[post("/contests")]
+async fn post_contest(body: web::Json<PostContest>, config: web::Data<Config>) -> impl Responder {
+    let mut body = body.clone();
+    body.problem_ids.sort();
+    body.user_ids.sort();
+
+    let mut contest_list = CONTEST_LIST.lock().unwrap();
+
+    if *body.problem_ids.iter().max().unwrap() >= config.problems.len() {
+        drop(contest_list);
+        return HttpResponse::NotFound().json(Error {
+            reason: "ERR_NOT_FOUND".to_string(),
+            code: 3,
+            message: "Problem id not found".to_string(),
+        });
+    }
+    if body.id.is_some() && body.id.unwrap() == 0 {
+        drop(contest_list);
+        return HttpResponse::NotFound().json(Error {
+            reason: "ERR_NOT_FOUND".to_string(),
+            code: 3,
+            message: "Contest id should not be 0.".to_string(),
+        });
+    }
+    let user_list = USER_LIST.lock().unwrap();
+    if *body.user_ids.iter().max().unwrap() >= user_list.len() {
+        drop(user_list);
+        drop(contest_list);
+        return HttpResponse::NotFound().json(Error {
+            reason: "ERR_NOT_FOUND".to_string(),
+            code: 3,
+            message: "User id not found".to_string(),
+        });
+    }
+    drop(user_list);
+
+    if body.id.is_none() {
+        let id = contest_list.len();
+        contest_list.push(Contest {
+            id,
+            name: body.name.clone(),
+            from: body.from.clone(),
+            to: body.to.to_string(),
+            problem_ids: body.problem_ids.clone(),
+            user_ids: body.user_ids.clone(),
+            submission_limit: body.submission_limit,
+        });
+        drop(contest_list);
+        return HttpResponse::Ok().json(Contest {
+            id,
+            name: body.name.clone(),
+            from: body.from.clone(),
+            to: body.to.to_string(),
+            problem_ids: body.problem_ids.clone(),
+            user_ids: body.user_ids.clone(),
+            submission_limit: body.submission_limit,
+        });
+    } else {
+        if body.id.unwrap() >= contest_list.len() {
+            drop(contest_list);
+            return HttpResponse::NotFound().json(Error {
+                reason: "ERR_NOT_FOUND".to_string(),
+                code: 3,
+                message: format!("Contest {} not found", body.id.unwrap()).to_string(),
+            });
+        } else {
+            contest_list[body.id.unwrap()] = Contest {
+                id: body.id.unwrap(),
+                name: body.name.clone(),
+                from: body.from.clone(),
+                to: body.to.clone(),
+                problem_ids: body.problem_ids.clone(),
+                user_ids: body.user_ids.clone(),
+                submission_limit: body.submission_limit,
+            };
+            drop(contest_list);
+            return HttpResponse::Ok().json(Contest {
+                id: body.id.unwrap(),
+                name: body.name.clone(),
+                from: body.from.clone(),
+                to: body.to.clone(),
+                problem_ids: body.problem_ids.clone(),
+                user_ids: body.user_ids.clone(),
+                submission_limit: body.submission_limit,
+            });
+        }
+    }
+}
+
+#[get("/contests")]
+async fn get_contests() -> impl Responder {
+    let contest_list = CONTEST_LIST.lock().unwrap();
+    let res = HttpResponse::Ok().json(contest_list.clone());
+    drop(contest_list);
+    res
+}
+
+#[get("/contests/{contest_id}")]
+async fn get_contests_by_id(contest_id: web::Path<usize>) -> impl Responder {
+    let contest_list = CONTEST_LIST.lock().unwrap();
+    if contest_id.clone() >= contest_list.len() {
+        drop(contest_list);
+        return HttpResponse::NotFound().json(Error {
+            reason: "ERR_NOT_FOUND".to_string(),
+            code: 3,
+            message: format!("Contest {} not found.", contest_id.clone()),
+        });
+    } else {
+        let res = contest_list[contest_id.clone()].clone();
+        drop(contest_list);
+        return HttpResponse::Ok().json(res);
+    }
 }
 
 #[get("/contests/{contest_id}/ranklist")]

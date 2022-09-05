@@ -5,20 +5,13 @@ mod judger;
 mod users;
 
 use actix_web::{get, middleware::Logger, post, web, App, HttpServer, Responder};
-use contests::get_contests_ranklist;
+use contests::{get_contests, get_contests_by_id, get_contests_ranklist, post_contest};
 use env_logger;
 use jobs::{get_jobid, get_jobs};
 use jobs::{post_jobs, put_jobid};
-use lazy_static::lazy_static;
 use log;
-use std::sync::{Arc, Mutex};
 use structopt::StructOpt;
 use users::{get_user, post_user};
-
-lazy_static! {
-    static ref PROBLEM_LIST: Arc<Mutex<Vec<crate::config::Problem>>> =
-        Arc::new(Mutex::new(Vec::new()));
-}
 
 #[derive(StructOpt)]
 struct Opt {
@@ -64,6 +57,9 @@ async fn main() -> std::io::Result<()> {
             .service(post_user)
             .service(get_user)
             .service(get_contests_ranklist)
+            .service(post_contest)
+            .service(get_contests)
+            .service(get_contests_by_id)
             // DO NOT REMOVE: used in automatic testing
             .service(exit)
     })

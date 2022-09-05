@@ -141,6 +141,71 @@ async fn post_jobs(body: web::Json<PostJob>, config: web::Data<Config>) -> impl 
         });
     }
 
+    if body.contest_id != 0 {
+        let contest_list = crate::contests::CONTEST_LIST.lock().unwrap();
+        if body.contest_id as usize >= contest_list.len() {
+            drop(contest_list);
+            return HttpResponse::BadRequest().json(Error {
+                reason: "ERR_INVALID_ARGUMENT".to_string(),
+                code: 1,
+                message: "Contest doesn't exist.".to_string(),
+            });
+        }
+        if !contest_list[body.contest_id as usize]
+            .problem_ids
+            .contains(&(body.problem_id as usize))
+        {
+            drop(contest_list);
+            return HttpResponse::BadRequest().json(Error {
+                reason: "ERR_INVALID_ARGUMENT".to_string(),
+                code: 1,
+                message: "Problem doesn't exist in this contest.".to_string(),
+            });
+        }
+        if !contest_list[body.contest_id as usize - 1]
+            .user_ids
+            .contains(&(body.user_id as usize))
+        {
+            drop(contest_list);
+            return HttpResponse::BadRequest().json(Error {
+                reason: "ERR_INVALID_ARGUMENT".to_string(),
+                code: 1,
+                message: "User id is not in the contest.".to_string(),
+            });
+        }
+
+        let response_list = RESPONSE_LIST.lock().unwrap();
+        let mut submission_count = 0;
+        for i in response_list.iter() {
+            if i.submission.contest_id == body.contest_id
+                && i.submission.problem_id == body.problem_id
+                && i.submission.user_id == body.user_id
+            {
+                submission_count += 1;
+            }
+        }
+        drop(response_list);
+        if submission_count >= contest_list[body.contest_id as usize].submission_limit {
+            drop(contest_list);
+            return HttpResponse::BadRequest().json(Error {
+                reason: "ERR_RATE_LIMIT".to_string(),
+                code: 1,
+                message: "Over submission limit.".to_string(),
+            });
+        }
+        if created_time > contest_list[body.contest_id as usize].to
+            || created_time < contest_list[body.contest_id as usize].from
+        {
+            drop(contest_list);
+            return HttpResponse::BadRequest().json(Error {
+                reason: "ERR_RATE_LIMIT".to_string(),
+                code: 1,
+                message: "Time limit.".to_string(),
+            });
+        }
+        drop(contest_list);
+    }
+
     let res = crate::judger::judger(&body.source_code, problem_id, &body.language, &config);
     let updated_time: String = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
 
@@ -227,9 +292,7 @@ async fn get_jobs(info: web::Query<Info>) -> impl Responder {
             .cmp(&DateTime::parse_from_rfc3339(&b.created_time).unwrap())
     });
 
-    #[derive(Serialize)]
-    struct Responses(Vec<Response>);
-    HttpResponse::Ok().json(Responses(res))
+    HttpResponse::Ok().json(res)
 }
 
 #[get("/jobs/{jobid}")]
